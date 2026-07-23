@@ -1790,14 +1790,33 @@ async function loadProgress(){
   updateRollButtonState();
 }
 
+// Lightweight integrity signature — not unbreakable (this is a client-side game with
+// no server to trust), but it flags saves that were hand-edited or corrupted outside
+// the game itself, rather than silently accepting arbitrary pasted numbers.
+const SAVE_SIG_SALT = "flagrng-save-v1-q7f3";
+function hashStringToSig(str){
+  let h = 0x811c9dc5;
+  for(let i=0;i<str.length;i++){
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+function computeSaveSig(data){
+  const {_sig, ...rest} = data;
+  return hashStringToSig(SAVE_SIG_SALT + JSON.stringify(rest));
+}
+
 function buildSaveObject(){
-  return {
+  const data = {
     collectedBadgeIds, collectedSetBadgeIds, collectedFlagNames, collectedPackFlagIds, lastSetSpinDates, equippedSetId, totalRollCount, totalFP,
     extraRollTokens, luckyCharms, mythicCharms, fpDoublers,
     flagGuarantees, fpBoostOwned, itemPrices,
     lastRollCountryName, lastRollSetId, lastRollEP, lastRollDate, lastStandardRollDate, lastRollNewBadgeIds, lastRollWasNewFlag, hasRolledToday: hasRolled,
     hlHighScores
   };
+  data._sig = computeSaveSig(data);
+  return data;
 }
 
 function saveProgress(){
@@ -4656,7 +4675,13 @@ function applyImportedSave(){
     return;
   }
 
-  if(!confirm("This will overwrite your current progress with the imported save. Continue?")) return;
+  const expectedSig = computeSaveSig(data);
+  const isVerified = data._sig === expectedSig;
+
+  const confirmMsg = isVerified
+    ? "This will overwrite your current progress with the imported save. Continue?"
+    : "⚠️ This save's integrity check failed — it looks like it was hand-edited or altered outside the game (or it's from an older version). Import anyway? This will overwrite your current progress.";
+  if(!confirm(confirmMsg)) return;
 
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
