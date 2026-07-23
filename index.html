@@ -499,23 +499,6 @@
   .hl-gameover{ text-align:center; }
   .hl-gameover-title{ font-size:1.1rem; font-weight:800; margin-bottom:6px; }
   .hl-gameover-score{ color:var(--muted); font-size:0.85rem; margin-bottom:16px; }
-
-  /* ---------- Save Export / Import ---------- */
-  .saveio-textarea{
-    width:100%; height:180px; resize:vertical; box-sizing:border-box;
-    background:var(--panel2); border:1px solid var(--border); color:var(--text);
-    border-radius:10px; padding:10px; font-family:ui-monospace,Menlo,Consolas,monospace;
-    font-size:0.72rem; line-height:1.4; margin:10px 0;
-  }
-  .saveio-hint{ color:var(--muted); font-size:0.8rem; line-height:1.5; text-align:center; margin-bottom:6px; }
-  .saveio-status{ font-size:0.8rem; text-align:center; margin-top:6px; min-height:1.2em; }
-  .saveio-status.ok{ color:#3ecf6a; }
-  .saveio-status.err{ color:#e05555; }
-  .saveio-file-label{
-    display:inline-block; background:var(--panel2); border:1px solid var(--border); color:var(--text);
-    padding:8px 12px; border-radius:10px; cursor:pointer; font-size:0.8rem; font-weight:700;
-  }
-  .saveio-file-label:hover{ border-color:var(--accent); color:var(--accent); }
 </style>
 </head>
 <body>
@@ -533,8 +516,6 @@
 <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:18px;">
   <button class="ghost-btn" onclick="openSizeLegend()">📐 Size/Population thresholds</button>
   <button class="ghost-btn" onclick="openMemberLegend()">🤝 Member Count thresholds</button>
-  <button class="ghost-btn" onclick="openExportSave()">💾 Export save</button>
-  <button class="ghost-btn" onclick="openImportSave()">📥 Import save</button>
   <button class="ghost-btn" onclick="resetProgress()">🗑️ Reset progress</button>
 </div>
 
@@ -603,10 +584,6 @@
 
 <div class="modal-overlay" id="higherLowerOverlay" onclick="if(event.target===this) closeHigherLower()">
   <div class="modal-box quiz-box" id="higherLowerBox"></div>
-</div>
-
-<div class="modal-overlay" id="saveIOOverlay" onclick="if(event.target===this) closeSaveIO()">
-  <div class="modal-box quiz-box" id="saveIOBox"></div>
 </div>
 
 <script>
@@ -1790,38 +1767,15 @@ async function loadProgress(){
   updateRollButtonState();
 }
 
-// Lightweight integrity signature — not unbreakable (this is a client-side game with
-// no server to trust), but it flags saves that were hand-edited or corrupted outside
-// the game itself, rather than silently accepting arbitrary pasted numbers.
-const SAVE_SIG_SALT = "flagrng-save-v1-q7f3";
-function hashStringToSig(str){
-  let h = 0x811c9dc5;
-  for(let i=0;i<str.length;i++){
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(36);
-}
-function computeSaveSig(data){
-  const {_sig, ...rest} = data;
-  return hashStringToSig(SAVE_SIG_SALT + JSON.stringify(rest));
-}
-
-function buildSaveObject(){
-  const data = {
-    collectedBadgeIds, collectedSetBadgeIds, collectedFlagNames, collectedPackFlagIds, lastSetSpinDates, equippedSetId, totalRollCount, totalFP,
-    extraRollTokens, luckyCharms, mythicCharms, fpDoublers,
-    flagGuarantees, fpBoostOwned, itemPrices,
-    lastRollCountryName, lastRollSetId, lastRollEP, lastRollDate, lastStandardRollDate, lastRollNewBadgeIds, lastRollWasNewFlag, hasRolledToday: hasRolled,
-    hlHighScores
-  };
-  data._sig = computeSaveSig(data);
-  return data;
-}
-
 function saveProgress(){
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(buildSaveObject()));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      collectedBadgeIds, collectedSetBadgeIds, collectedFlagNames, collectedPackFlagIds, lastSetSpinDates, equippedSetId, totalRollCount, totalFP,
+      extraRollTokens, luckyCharms, mythicCharms, fpDoublers,
+      flagGuarantees, fpBoostOwned, itemPrices,
+      lastRollCountryName, lastRollSetId, lastRollEP, lastRollDate, lastStandardRollDate, lastRollNewBadgeIds, lastRollWasNewFlag, hasRolledToday: hasRolled,
+      hlHighScores
+    }));
   }catch(e){
     console.error('Could not save progress', e);
   }
@@ -4568,140 +4522,6 @@ function advanceHigherLower(){
   hlNext = pickHlNext();
   hlRoundLocked = false;
   renderHigherLowerRound(null);
-}
-
-// ---------- Save Export / Import ----------
-function openExportSave(){
-  const box = document.getElementById("saveIOBox");
-  const json = JSON.stringify(buildSaveObject(), null, 2);
-  box.innerHTML = `
-    <div class="quiz-flash-counter">💾 Export Save</div>
-    <div class="saveio-hint">Download a backup file, or copy the text below and paste it somewhere safe. Use "Import Save" on any device to restore it.</div>
-    <textarea class="saveio-textarea" id="saveIOExportArea" readonly onclick="this.select()">${json.replace(/</g,"&lt;")}</textarea>
-    <div class="saveio-status" id="saveIOStatus"></div>
-    <div class="conn-action-row">
-      <button class="ghost-btn" onclick="downloadSaveFile()">⬇️ Download File</button>
-      <button class="ghost-btn" onclick="copySaveToClipboard()">📋 Copy Text</button>
-      <button class="modal-close" onclick="closeSaveIO()">Close</button>
-    </div>
-  `;
-  document.getElementById("saveIOOverlay").classList.add("open");
-}
-
-function downloadSaveFile(){
-  try{
-    const json = JSON.stringify(buildSaveObject(), null, 2);
-    const blob = new Blob([json], {type:"application/json"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const date = new Date().toISOString().slice(0,10);
-    a.href = url;
-    a.download = `flagrng-save-${date}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    setSaveIOStatus("Download started.", true);
-  }catch(e){
-    console.error("Could not download save", e);
-    setSaveIOStatus("Couldn't generate the download — try copying the text instead.", false);
-  }
-}
-
-function copySaveToClipboard(){
-  const area = document.getElementById("saveIOExportArea");
-  const finish = (ok) => setSaveIOStatus(ok ? "Copied to clipboard!" : "Couldn't copy automatically — select the text and copy it manually.", ok);
-  if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(area.value).then(()=>finish(true)).catch(()=>{
-      area.select();
-      try{ finish(document.execCommand("copy")); }catch(e){ finish(false); }
-    });
-  }else{
-    area.select();
-    try{ finish(document.execCommand("copy")); }catch(e){ finish(false); }
-  }
-}
-
-function openImportSave(){
-  const box = document.getElementById("saveIOBox");
-  box.innerHTML = `
-    <div class="quiz-flash-counter">📥 Import Save</div>
-    <div class="saveio-hint">Paste your exported save text below, or load a downloaded save file. This will overwrite your current progress.</div>
-    <textarea class="saveio-textarea" id="saveIOImportArea" placeholder="Paste your exported save JSON here..."></textarea>
-    <input type="file" accept="application/json,.json" id="saveIOFileInput" style="display:none;" onchange="handleSaveFileSelected(event)">
-    <label class="saveio-file-label" for="saveIOFileInput">📂 Choose File Instead</label>
-    <div class="saveio-status" id="saveIOStatus"></div>
-    <div class="conn-action-row">
-      <button class="quiz-submit-btn" onclick="applyImportedSave()">Import & Restore</button>
-      <button class="modal-close" onclick="closeSaveIO()">Cancel</button>
-    </div>
-  `;
-  document.getElementById("saveIOOverlay").classList.add("open");
-}
-
-function handleSaveFileSelected(evt){
-  const file = evt.target.files && evt.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const area = document.getElementById("saveIOImportArea");
-    if(area) area.value = reader.result;
-    setSaveIOStatus(`Loaded "${file.name}" — click Import & Restore to apply it.`, true);
-  };
-  reader.onerror = () => setSaveIOStatus("Couldn't read that file.", false);
-  reader.readAsText(file);
-}
-
-function applyImportedSave(){
-  const area = document.getElementById("saveIOImportArea");
-  const raw = (area.value || "").trim();
-  if(!raw){ setSaveIOStatus("Paste your save text or choose a file first.", false); return; }
-
-  let data;
-  try{
-    data = JSON.parse(raw);
-  }catch(e){
-    setSaveIOStatus("That doesn't look like valid save data (invalid JSON).", false);
-    return;
-  }
-  if(!data || typeof data !== "object" || Array.isArray(data)){
-    setSaveIOStatus("That doesn't look like valid FlagRNG save data.", false);
-    return;
-  }
-  // Light sanity check: a real save should have at least one recognizable field.
-  const knownFields = ["collectedBadgeIds","collectedFlagNames","totalFP","totalRollCount","equippedSetId"];
-  if(!knownFields.some(f => f in data)){
-    setSaveIOStatus("That doesn't look like valid FlagRNG save data.", false);
-    return;
-  }
-
-  const expectedSig = computeSaveSig(data);
-  const isVerified = data._sig === expectedSig;
-
-  const confirmMsg = isVerified
-    ? "This will overwrite your current progress with the imported save. Continue?"
-    : "⚠️ This save's integrity check failed — it looks like it was hand-edited or altered outside the game (or it's from an older version). Import anyway? This will overwrite your current progress.";
-  if(!confirm(confirmMsg)) return;
-
-  try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    setSaveIOStatus("Import successful! Reloading...", true);
-    setTimeout(() => location.reload(), 600);
-  }catch(e){
-    console.error("Could not import save", e);
-    setSaveIOStatus("Something went wrong writing the save. Try again.", false);
-  }
-}
-
-function setSaveIOStatus(msg, ok){
-  const el = document.getElementById("saveIOStatus");
-  if(!el) return;
-  el.textContent = msg;
-  el.className = "saveio-status " + (ok ? "ok" : "err");
-}
-
-function closeSaveIO(){
-  document.getElementById("saveIOOverlay").classList.remove("open");
 }
 
 // ---------- Init ----------
